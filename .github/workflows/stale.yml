@@ -1,0 +1,44 @@
+# Keeps the queue honest: a pull request or issue nobody has touched for a
+# long time is marked, and closed a fortnight later unless someone speaks up.
+# Anything a maintainer wants kept carries one of the exempt labels. Closing
+# is reversible; silence is what this guards against.
+name: Stale
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-pr-stale: 45
+          days-before-pr-close: 14
+          days-before-issue-stale: 120
+          days-before-issue-close: 21
+          stale-pr-label: stale
+          stale-issue-label: stale
+          exempt-pr-labels: "pinned,work-in-progress,autorelease: pending"
+          exempt-issue-labels: "pinned,epic,help wanted,good first issue"
+          exempt-draft-pr: false
+          stale-pr-message: >
+            This pull request has had no activity for 45 days. Main has probably moved under
+            it: please rebase and say what is left, or ask a maintainer to take it over. It
+            closes in 14 days if nothing happens; reopening is one click and no work is lost.
+          stale-issue-message: >
+            This issue has had no activity for 120 days. If it still matters, add what is
+            missing or current (which version, what you saw) and it stays open; otherwise it
+            closes in 21 days and can be reopened at any time.
+          close-pr-message: >
+            Closed for inactivity. If you pick it up again, reopen or open a fresh pull request
+            against current main and link this one.
+          close-issue-message: >
+            Closed for inactivity. Reopen if it is still happening on a current release.
+          operations-per-run: 200

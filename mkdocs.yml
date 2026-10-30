@@ -183,7 +183,7 @@ nav:
   - Design & History:
     - Design Notes: design/index.md
     - Original Design (Feb 2026): design.md
-    - Roadmap (Feb 2026): roadmap.md
+    - Roadmap: roadmap.md
 
 not_in_nav: |
   /design/*.md

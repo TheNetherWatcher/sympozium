@@ -9,10 +9,11 @@ This page is an honest comparison: where they are ahead, where Sympozium is,
 and where the projects are not really competing at all.
 
 !!! info "Scope and date"
-    Last reviewed **2026-09-23** against `google/ax` v0.3.0 and
+    AX and Substrate rows last reviewed **2026-09-23** against `google/ax` v0.3.0 and
     `agent-substrate/substrate` v0.1.0, from their own READMEs, design docs,
     roadmap and threat model, plus Google's
     [GKE announcement](https://cloud.google.com/blog/products/containers-kubernetes/agent-substrate-available-on-gke).
+    Sympozium rows updated **2026-10-30** for v0.12.1 (agent-bound model access).
     All three projects are pre-1.0 and changing fast. If something here is out
     of date, please open an issue or PR.
 
@@ -48,7 +49,7 @@ agent in a sandbox on Kubernetes", and diverge sharply everywhere else.
 | **Idle agents** | Consume their Pod or cell until they finish, time out or hit their lease | Suspended to object storage (memory + filesystem) and resumed on any worker; Google quotes sub-500 ms resume |
 | **Isolation** | Hardened Pods; gVisor/Kata via `agent-sandbox`; KVM microVMs via Celln | gVisor or Cloud Hypervisor microVMs, per actor |
 | **Egress control** | Kubernetes NetworkPolicy; brokered tools in Celln | All actor TCP forced through an mTLS egress proxy with per-actor certificates; non-HTTP(S) blocked |
-| **Model credentials** | Per-key env injection from an allowlist; optional model gateway keeps keys off Celln nodes | Google describes egress proxies that inject credentials; the Substrate roadmap still lists proxy-based credential injection as upcoming work |
+| **Model credentials** | Pod runs: per-key env injection from an allowlist. Celln runs (0.12): the fleet holds no key; each Agent's own `ModelConnection` key is pinned to its origin and added by the model gateway outside the cell | Google describes egress proxies that inject credentials; the Substrate roadmap still lists proxy-based credential injection as upcoming work |
 | **Tool isolation** | Each skill is its own sidecar with per-run least-privilege RBAC | Not modelled: tools run inside the task sandbox |
 | **Tool policy** | `SympoziumPolicy` allow/deny rules merged into every pod-based run's tool list | Egress allowlists only |
 | **Human approval** | Response gates hold a run's output for approve/reject in the UI; no per-tool-call approval | Not provided |
@@ -177,9 +178,14 @@ runtime on it. Sympozium already chooses between several execution backends per 
 another one. It would bring suspend/resume density underneath Sympozium's
 policy and coordination.
 
-**No such integration exists today.** It is not on the
-[roadmap](roadmap.md), and it would first need Substrate's APIs and security
-model to stabilise.
+**No such integration exists today, but it is now the plan.** On 2026-10-30
+the project decided to treat the execution plane as pluggable: a four-week
+spike brings Substrate in as an optional `AgentRun` backend, with exit
+criteria and a written go/no-go
+([epic #692](https://github.com/sympozium-ai/sympozium/issues/692)), while
+Celln stays as the self-hosted option rather than the default. See the
+[roadmap](roadmap.md). Substrate's APIs and security model are still pre-1.0,
+so the spike also decides how much of their surface the backend may depend on.
 
 ---
 
