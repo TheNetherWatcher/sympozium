@@ -21,6 +21,7 @@ import (
 
 	"github.com/sympozium-ai/sympozium/internal/ipc"
 	"github.com/sympozium-ai/sympozium/internal/llmprovider"
+	"github.com/sympozium-ai/sympozium/pkg/genaiattrs"
 	"github.com/sympozium-ai/sympozium/pkg/sidecartools"
 )
 
@@ -507,6 +508,8 @@ func main() {
 		attribute.String("tenant.namespace", getEnv("AGENT_NAMESPACE", "")),
 		attribute.String("model", modelName),
 		attribute.String("task.summary", truncate(task, 200)),
+		genaiattrs.Agent(getEnv("INSTANCE_NAME", "")),
+		genaiattrs.Model(modelName),
 	)
 	writeTraceContextMetadata(ctx)
 	detailedLog.LogAgent("span_start", map[string]any{"task": task})
@@ -627,6 +630,12 @@ func main() {
 	}
 
 	_ = os.MkdirAll("/ipc/output", 0o755)
+
+	// Attach the fully-assembled system prompt once on the run span rather than
+	// on every per-round gen_ai.chat span (persona prompts are large; repeating
+	// them per round bloats span payload). Opt-in only: see
+	// recordSystemInstructions.
+	recordSystemInstructions(runSpan, systemPrompt)
 
 	start := time.Now()
 

@@ -264,6 +264,7 @@ func (p *openaiProvider) Chat(ctx context.Context) (ChatResult, error) {
 		CachedInputTokens: int(completion.Usage.PromptTokensDetails.CachedTokens),
 		OutputTokens:      int(completion.Usage.CompletionTokens),
 		FinishReason:      choice.FinishReason,
+		ResponseModel:     completion.Model,
 	}
 
 	// Extract tool calls whenever present, regardless of finish_reason.

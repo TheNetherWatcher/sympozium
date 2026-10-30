@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sympozium-ai/sympozium/pkg/genaiattrs"
 	"github.com/sympozium-ai/sympozium/pkg/telemetry"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -140,6 +141,18 @@ func (o *agentObservability) startRunSpan(ctx context.Context, attrs ...attribut
 		return ctx, trace.SpanFromContext(ctx)
 	}
 	return o.tracer.Start(ctx, "sympozium.agent.run", trace.WithAttributes(attrs...))
+}
+
+// recordSystemInstructions attaches gen_ai.system_instructions to span. The
+// system prompt is message content, not metadata: it is large and may carry
+// sensitive text, so it is recorded only when the operator has opted in with
+// OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true and is otherwise
+// never emitted. Call it once on the run span, not on per-round chat spans.
+func recordSystemInstructions(span trace.Span, systemPrompt string) {
+	if span == nil || systemPrompt == "" || !genaiattrs.CaptureMessageContent() {
+		return
+	}
+	span.SetAttributes(genaiattrs.SystemInstructions(systemPrompt))
 }
 
 func (o *agentObservability) startChatSpan(ctx context.Context, attrs ...attribute.KeyValue) (context.Context, trace.Span) {

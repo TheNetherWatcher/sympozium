@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sympozium-ai/sympozium/pkg/genaiattrs"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
@@ -58,6 +59,10 @@ type ChatResult struct {
 	CachedInputTokens int
 	OutputTokens      int
 	FinishReason      string
+	// ResponseModel is the model id the backend reports having served the
+	// request (gen_ai.response.model). May differ from the requested model
+	// (aliases, routed models). Empty if the backend does not report one.
+	ResponseModel string
 }
 
 // LLMProvider is a stateful adapter for one chat conversation with a
@@ -203,8 +208,11 @@ func runAgentLoop(ctx context.Context, p LLMProvider, tools []ToolDef) (string, 
 		}
 
 		chatCtx, chatSpan := obs.startChatSpan(ctx,
-			attribute.String("gen_ai.system", p.Name()),
-			attribute.String("gen_ai.request.model", p.Model()),
+			genaiattrs.Provider(p.Name()),
+			// Deprecated gen_ai.system is emitted alongside gen_ai.provider.name
+			// for one release cycle so existing dashboards keep working.
+			genaiattrs.System(p.Name()),
+			genaiattrs.Model(p.Model()),
 		)
 		res, err := p.Chat(chatCtx)
 		if err != nil {
@@ -236,12 +244,19 @@ func runAgentLoop(ctx context.Context, p LLMProvider, tools []ToolDef) (string, 
 		totalOutputTokens += res.OutputTokens
 		totalCachedTokens += res.CachedInputTokens
 		chatSpan.SetAttributes(
-			attribute.Int("gen_ai.usage.input_tokens", res.InputTokens),
+			genaiattrs.InputTokens(res.InputTokens),
 			attribute.Int("gen_ai.usage.cached_input_tokens", res.CachedInputTokens),
-			attribute.Int("gen_ai.usage.output_tokens", res.OutputTokens),
+			genaiattrs.OutputTokens(res.OutputTokens),
 		)
+		// gen_ai.response.model is what the backend reports having served, which
+		// can differ from the requested model (aliases, routed models). It is set
+		// only when the backend reports one; the requested model is already on
+		// the span as gen_ai.request.model, so there is nothing to fall back to.
+		if res.ResponseModel != "" {
+			chatSpan.SetAttributes(genaiattrs.ResponseModel(res.ResponseModel))
+		}
 		if res.FinishReason != "" {
-			chatSpan.SetAttributes(attribute.String("gen_ai.response.finish_reasons", res.FinishReason))
+			chatSpan.SetAttributes(genaiattrs.FinishReasons(res.FinishReason))
 		}
 		chatSpan.SetStatus(codes.Ok, "")
 		chatSpan.End()

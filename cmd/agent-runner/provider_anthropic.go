@@ -260,6 +260,7 @@ func (p *anthropicProvider) Chat(ctx context.Context) (ChatResult, error) {
 		CachedInputTokens: int(msg.Usage.CacheReadInputTokens),
 		OutputTokens:      int(msg.Usage.OutputTokens),
 		FinishReason:      string(msg.StopReason),
+		ResponseModel:     string(msg.Model),
 	}
 
 	// Continue the loop only when the model explicitly stopped to call

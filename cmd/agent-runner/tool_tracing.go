@@ -8,13 +8,15 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+
+	"github.com/sympozium-ai/sympozium/pkg/genaiattrs"
 )
 
 func executeToolCallWithTelemetry(ctx context.Context, name, argsJSON, callID string) string {
 	start := time.Now()
 	toolCtx, toolSpan := obs.startToolSpan(ctx,
-		attribute.String("gen_ai.tool.name", name),
-		attribute.String("gen_ai.tool.call.id", callID),
+		genaiattrs.ToolName(name),
+		genaiattrs.ToolCallID(callID),
 	)
 
 	var result string
