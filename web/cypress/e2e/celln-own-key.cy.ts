@@ -591,3 +591,45 @@ describe("Agent → Harness: the Agent's own model backend", () => {
     cy.get("@patch.all").should("have.length", 1);
   });
 });
+
+// 0.12 creates every fleet runtime as a profile reference (internal/cellnplatform/platform.go),
+// so the run dialog must admit a wrapper runtime without an inline celln.json-tools/v1 contract.
+describe("New Run from a profile-backed Celln Agent", () => {
+  it("admits the fleet wrapper runtime and submits the Agent's own connection and inherited limits", () => {
+    const enduring = { leaseSeconds: 600, maxTurns: 3, maxModelRequests: 18, maxOutputTokens: 9216, requireToolCall: true };
+    const tool = { metadata: { name: "celln-starter-grep", namespace: "default", uid: "grep" }, spec: { revision: "v1", description: "grep fixture", publisherKey: "public-publisher", supportOwner: "celln-platform", invocationABI: "celln.json-stdio/v1", lane: "tool", limits: { timeoutMillis: 1000, memoryBytes: 1024, argumentBytes: 128, outputBytes: 128, workspace: "none", effects: "none" } } };
+    const toolRef = { name: tool.metadata.name, revision: tool.spec.revision };
+    cy.intercept("GET", "**/api/v1/**", { body: [] });
+    // The Agent arrives after the page: the deep link must wait for it instead of opening an empty dialog.
+    cy.intercept("GET", "**/api/v1/agents*", { delay: 500, body: [{ metadata: { name: "own-key" }, spec: {
+      runtimeRef: "celln-native-starter-wrapper", agents: { default: { model: "deepseek-chat" } },
+      execution: { backend: "celln", executionLifecycle: "enduring", model: "deepseek-chat", modelConnectionRef: "own-key-connection", enduring, cellnSelection: { runtimeRef: "celln-native-starter-wrapper", toolRefs: [toolRef] } },
+    } }] });
+    cy.intercept("GET", "**/api/v1/runtimes*", { body: [{ metadata: { name: "celln-native-starter-wrapper" }, spec: { cellnProfileRef: { name: profile.name, revision: profile.revision }, supportOwner: "celln-platform" } }] });
+    cy.intercept("GET", "**/api/v1/celln-tools*", { body: [tool] });
+    cy.intercept("GET", "**/api/v1/capabilities*", { body: { celln: { available: true, state: "ready", reason: "fleet ready" } } });
+    cy.intercept("POST", "**/api/v1/runs*", (request) => {
+      expect(request.body).to.include({ agentRef: "own-key", backend: "celln", modelConnectionRef: "own-key-connection", model: "deepseek-chat", executionLifecycle: "enduring", timeout: "600s" });
+      expect(request.body.enduring).to.deep.eq(enduring);
+      expect(request.body.cellnSelection).to.deep.eq({ toolRefs: [toolRef] });
+      expect(request.body).not.to.have.any.keys("apiKey", "secretName", "provider");
+      request.reply({ statusCode: 201, body: { metadata: { name: "own-key-run" } } });
+    }).as("createRun");
+    cy.visit("/runs?create=1&agent=own-key");
+    dialog().should("contain", "own-key");
+    // The Agent's defaults carry requireToolCall alongside the four limits; only the limits become bounded inputs.
+    cy.get('[data-testid="celln-leaseSeconds"]').should("have.value", "600");
+    cy.get('[data-testid="celln-maxOutputTokens"]').should("have.value", "9216");
+    cy.get('[data-testid="celln-require-tool-call"]').should("be.checked");
+    dialog().should("contain", "model gateway").and("not.contain", "fleet ready").and("not.contain", "does not declare");
+    cy.get('textarea[placeholder="Describe the task for the agent…"]').type("Reply READY only.");
+    // A wrapper runtime has no OCI image: the Job backend is refused, the cell is not.
+    cy.get('[data-testid="execution-environment"]').contains("button", "Kubernetes").click();
+    dialog().should("contain", "no OCI image");
+    dialog().contains("button", "Create Run").should("be.disabled");
+    cy.get('[data-testid="execution-environment"]').contains("button", "Celln cell").click();
+    dialog().contains("label", `${toolRef.name}@${toolRef.revision}`).find('input[type="checkbox"]').check();
+    dialog().contains("button", "Request enduring run").should("be.enabled").click();
+    cy.wait("@createRun");
+  });
+});

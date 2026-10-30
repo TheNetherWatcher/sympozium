@@ -63,6 +63,17 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRunsSeen } from "@/hooks/use-runs-seen";
 import type { AgentRun } from "@/lib/api";
+import { isNativeCellnRuntime } from "@/lib/persistent-harness";
+
+type EnduringLimits = { leaseSeconds: number; maxTurns: number; maxModelRequests: number; maxOutputTokens: number };
+
+/**
+ * An Agent's enduring defaults may also carry `requireToolCall`; the limit
+ * inputs index `parentBounds` by key, so only the four limits are copied.
+ */
+function enduringLimits(enduring: EnduringLimits): EnduringLimits {
+  return { leaseSeconds: enduring.leaseSeconds, maxTurns: enduring.maxTurns, maxModelRequests: enduring.maxModelRequests, maxOutputTokens: enduring.maxOutputTokens };
+}
 
 /** Returns true when a run is waiting on a gate verdict.
  *
@@ -130,7 +141,11 @@ export function RunsPage() {
       const [min, max] = parentBounds[key as keyof typeof parentLimits];
       return !Number.isInteger(value) || value < min || value > max;
     }));
-  const compatibleHarness = selectedRuntime?.spec.celln?.contractVersion === "celln.json-tools/v1";
+  const nativeRuntime = !!selectedRuntime && isNativeCellnRuntime(selectedRuntime);
+  // A fleet wrapper names its profile for the controller to resolve (admission
+  // still checks the exact revision and policy); only an inline runtime has to
+  // declare the supported JSON contract itself.
+  const compatibleHarness = !!selectedRuntime?.spec.cellnProfileRef || selectedRuntime?.spec.celln?.contractVersion === "celln.json-tools/v1";
   const staleTools = lentTools.some((ref) => !(catalogue.data || []).some((tool) => tool.metadata.name === ref.name && tool.spec.revision === ref.revision));
   const incompatibleSkills = !!selectedAgent?.spec.skills?.length;
   const incompatibleMcp = !!selectedAgent?.spec.mcpServers?.length;
@@ -138,11 +153,13 @@ export function RunsPage() {
   // MCP connections, one-shot or enduring. Match it here so the form fails fast.
   const incompatibleAgent = form.backend === "celln" && (incompatibleSkills || incompatibleMcp);
   const blockedSelection = incompatibleAgent || (cellnHarness && (!compatibleHarness || !form.model.trim() || catalogue.isLoading || catalogue.isError || staleTools));
-  const jobIncompatible = form.backend === "job" && !!selectedRuntime?.spec.celln && !selectedRuntime.spec.image;
+  const jobIncompatible = form.backend === "job" && nativeRuntime && !selectedRuntime?.spec.image;
 
   useEffect(() => {
     if (searchParams.get("create") === "1") {
       const agentRef = searchParams.get("agent") || "";
+      // Do not consume a deep link before the Agent and its defaults arrive.
+      if (agentRef && instances.isLoading) return;
       const agent = (instances.data || []).find((item) => item.metadata.name === agentRef);
       const execution = agent?.spec.execution;
       setForm((current) => ({
@@ -153,10 +170,14 @@ export function RunsPage() {
       }));
       if (execution?.executionLifecycle === "enduring") setEnduring(true);
       if (execution?.cellnSelection?.toolRefs) setLentTools(execution.cellnSelection.toolRefs);
+      if (execution?.enduring) {
+        setParentLimits(enduringLimits(execution.enduring));
+        setRequireToolCall(!!execution.enduring.requireToolCall);
+      }
       setOpen(true);
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, setSearchParams, instances.data]);
+  }, [searchParams, setSearchParams, instances.data, instances.isLoading]);
 
   // Mark all runs as seen after a short delay so "new" dots are visible briefly.
   useEffect(() => {
@@ -263,12 +284,8 @@ export function RunsPage() {
                     setEnduring(execution?.executionLifecycle === "enduring");
                     setLentTools(execution?.cellnSelection?.toolRefs || []);
                     if (execution?.enduring) {
-                      setParentLimits({
-                        leaseSeconds: execution.enduring.leaseSeconds,
-                        maxTurns: execution.enduring.maxTurns,
-                        maxModelRequests: execution.enduring.maxModelRequests,
-                        maxOutputTokens: execution.enduring.maxOutputTokens,
-                      });
+                      setParentLimits(enduringLimits(execution.enduring));
+                      setRequireToolCall(!!execution.enduring.requireToolCall);
                     }
                   }}
                 >
@@ -384,14 +401,14 @@ export function RunsPage() {
                       {incompatibleAgent && <p role="alert" className="text-xs text-red-400">This Agent carries {incompatibleSkills ? `SkillPacks (${selectedAgent?.spec.skills?.map((skill) => skill.skillPackRef || skill.configMapRef).join(", ")})` : ""}{incompatibleSkills && incompatibleMcp ? " and " : ""}{incompatibleMcp ? "MCP connections" : ""} that native Celln cannot use. Choose a dedicated native Agent with borrowed tools, or a compatible backend. Nothing is silently removed.</p>}
                       <p className="text-xs text-muted-foreground">Skills are instructions; borrowed tools perform operations. Existing SkillPack sidecars and MCP connections are not automatically available in Celln.</p>
                       {!compatibleHarness && <p role="alert" className="text-xs text-red-400">This Harness does not declare the supported native JSON Celln contract. No backend fallback will be used.</p>}
-                      <p className="text-xs text-muted-foreground">The model loop runs inside the cell. DeepSeek model access is independently approved by the host; Kubernetes model credentials are not used.</p>
+                      <p className="text-xs text-muted-foreground">The model loop runs inside the cell. Its model requests leave through the model gateway on this Agent's own ModelConnection and key, whatever the provider; the cell never holds the key.</p>
                       <label className="flex items-center gap-2 text-sm"><input data-testid="celln-enduring-opt-in" type="checkbox" checked={enduring} onChange={(event) => setEnduring(event.target.checked)} />Enduring conversation (development — operator approval required)</label>
                       {enduringRequest && <div className="space-y-2" data-testid="celln-enduring-limits">
-                        <p role="alert" className="text-xs text-amber-500">This creates a request, not a ready agent. A matching operator-prepared parent registration can admit it automatically. One-shot runtime metadata and node readiness do not establish enduring support. Fresh host-parent provisioning still requires operator preparation.</p>
+                        <p role="alert" className="text-xs text-amber-500">This requests an enduring conversation, not a ready agent. The controller resolves the runtime profile, checks namespace policy and this Agent's model connection, and only then admits a native parent.</p>
                         <label className="block space-y-1 text-xs">Harness system prompt (optional)
                           <Textarea data-testid="celln-parent-system-prompt" value={parentSystemPrompt} onChange={(event) => setParentSystemPrompt(event.target.value)} placeholder="Instructions retained by the parent Harness" />
                         </label>
-                        <p className="text-xs text-muted-foreground">These instructions must match the prepared parent registration exactly. An empty field requests no system prompt.</p>
+                        <p className="text-xs text-muted-foreground">Optional instructions for this conversation, bounded by the runtime profile and namespace policy. An empty field requests no system prompt.</p>
                         <label className="flex items-center gap-2 text-xs"><input data-testid="celln-require-tool-call" type="checkbox" checked={requireToolCall} onChange={(event) => setRequireToolCall(event.target.checked)} />Require a fresh borrowed-tool call on every turn</label>
                         <p className="text-xs text-muted-foreground">Optional. Requires at least one selected tool and matching parent approval. A turn cannot report success without executing a lent tool; this does not require every selected tool.</p>
                         {(Object.keys(parentLimits) as (keyof typeof parentLimits)[]).map((key) => <label key={key} className="block text-xs">{key}
@@ -434,7 +451,7 @@ export function RunsPage() {
                           Dispatch still performs its own admission checks.
                         </span>
                       </p>
-                    ) : capabilities.data?.celln.available ? (
+                    ) : capabilities.data?.celln.available && !nativeRuntime ? (
                       <p className="text-xs text-amber-500/80 mt-1">
                         {capabilities.data.celln.reason ||
                           "Celln node preflight passed; runtime and tool readiness still require validation."}
