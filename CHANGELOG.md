@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.12.2](https://github.com/sympozium-ai/sympozium/compare/v0.12.1...v0.12.2) (2026-10-30)
+
+
+### Features
+
+* in-place gate retry for harness mode (resume) ([#677](https://github.com/sympozium-ai/sympozium/issues/677)) ([4211eba](https://github.com/sympozium-ai/sympozium/commit/4211eba4aaa33e67b032ff86a9371a78cef58152))
+* **observability:** emit OpenTelemetry gen_ai.* semantic conventions on agent spans ([#689](https://github.com/sympozium-ai/sympozium/issues/689)) ([f83a29d](https://github.com/sympozium-ai/sympozium/commit/f83a29d13e64365938ff38ead32a3776839645f3))
+
+
+### Bug Fixes
+
+* **agent-runner:** gate delegate_to_persona on delegation edges (Fix A, [#288](https://github.com/sympozium-ai/sympozium/issues/288)) ([#295](https://github.com/sympozium-ai/sympozium/issues/295)) ([c093085](https://github.com/sympozium-ai/sympozium/commit/c0930850b7a9df9d12719413c39fd825a3b2c8d5))
+* **agent-runner:** skip empty-task seed message in prompt-server mode ([#344](https://github.com/sympozium-ai/sympozium/issues/344)) ([91a6fb6](https://github.com/sympozium-ai/sympozium/commit/91a6fb69905de3dad46c90e34a56df3d58d7901d))
+* **cli:** operator-mode installs keep the release's model gateway pin ([#680](https://github.com/sympozium-ai/sympozium/issues/680)) ([6dbd4c1](https://github.com/sympozium-ai/sympozium/commit/6dbd4c1b78847d4b126b60118d53377a6aa03e4b))
+* **console:** admit profile-backed runtimes in run dialog ([#626](https://github.com/sympozium-ai/sympozium/issues/626)) ([38fdd3d](https://github.com/sympozium-ai/sympozium/commit/38fdd3d4a4d341fa06bdee704ac476e31fe2deaa))
+
 ## [0.12.1](https://github.com/sympozium-ai/sympozium/compare/v0.12.0...v0.12.1) (2026-10-28)
 
 
